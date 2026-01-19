@@ -48,9 +48,9 @@ python -m PyInstaller --noconsole --onefile \
 --add-data "commbeep.wav;." \
 --add-data "unitbeep.wav;." \
 --add-binary "ffmpeg.exe;." \
-bz98_architect.py
+audio.py
 ```
-##Credits & Licensing
+## Credits & Licensing
 Code: Licensed under the MIT License.
 
 FFmpeg: This tool bundles FFmpeg binaries licensed under the LGPLv2.1.
