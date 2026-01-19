@@ -19,3 +19,27 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+--------------------------------------------------------------------------------
+THIRD-PARTY COMPONENTS AND ASSET NOTICE
+--------------------------------------------------------------------------------
+
+This application (BZRadio) bundles and redistributes the following components:
+
+1. FFmpeg (ffmpeg.exe)
+   - License: GNU Lesser General Public License (LGPL) version 2.1 or later.
+   - FFmpeg is a trademark of Fabrice Bellard, originator of the FFmpeg project.
+   - Source code for FFmpeg can be found at https://ffmpeg.org.
+   - BZRadio interacts with FFmpeg via command-line arguments (linking) and does 
+     not modify the FFmpeg source code.
+
+2. Battlezone 98 Redux Audio Assets (commbeep.wav, unitbeep.wav)
+   - These assets are the intellectual property of Rebellion / Activision.
+   - They are included here for non-commercial fan-use and modding purposes 
+     specifically for the Battlezone 98 Redux community.
+   - All rights to these sounds remain with the respective copyright holders.
+
+3. Python Libraries
+   - CustomTkinter (MIT License)
+   - SoundFile (BSD License)
+   - NumPy (BSD License)
