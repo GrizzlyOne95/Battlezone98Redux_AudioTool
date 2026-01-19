@@ -13,6 +13,8 @@
 - **Lua Timing Manifest:** Exports a CSV of file durations—essential for scripters to perfectly time subtitles and mission events in Lua.
 - **Batch & Single Mode:** Process an entire folder of source files or a single specific track with one click.
 
+<img width="752" height="1032" alt="image" src="https://github.com/user-attachments/assets/afa90fef-c151-4424-8988-0a2ab3823a9f" />
+
 ---
 
 ## Audio Specifications
