@@ -49,7 +49,7 @@ python -m PyInstaller --noconsole --onefile \
 --add-data "unitbeep.wav;." \
 --add-binary "ffmpeg.exe;." \
 bz98_architect.py
-
+```
 ##Credits & Licensing
 Code: Licensed under the MIT License.
 
