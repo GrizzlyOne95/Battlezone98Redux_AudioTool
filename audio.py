@@ -19,15 +19,14 @@ class BZRadio(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("BZRadio - Battlezone 98 Redux Audio Tool")
-        self.geometry("750x1000")
+        self.geometry("750x1050")
         self.custom_beep_path = None
         
-        # Set the window icon
         try:
             self.iconpath = get_resource_path("bzradio.ico")
             self.wm_iconbitmap(self.iconpath)
         except:
-            pass # Fallback if icon isn't found
+            pass 
 
         # --- HEADER ---
         self.header = ctk.CTkLabel(self, text="BZRadio", font=("Courier", 36, "bold"))
@@ -42,12 +41,21 @@ class BZRadio(ctk.CTk):
         ctk.CTkRadioButton(self.mode_frame, text="Batch Folder Process", variable=self.process_mode, value="batch").grid(row=0, column=0, padx=40, pady=10)
         ctk.CTkRadioButton(self.mode_frame, text="Single File Process", variable=self.process_mode, value="single").grid(row=0, column=1, padx=40, pady=10)
 
+        # --- GLOBAL SETTINGS ---
+        self.global_frame = ctk.CTkFrame(self)
+        self.global_frame.pack(pady=10, padx=20, fill="x")
+        ctk.CTkLabel(self.global_frame, text="Global Processing Options", font=("Arial", 14, "bold")).pack(pady=5)
+        
+        self.strip_metadata_var = ctk.BooleanVar(value=True)
+        self.strip_metadata_cb = ctk.CTkCheckBox(self.global_frame, text="Strip all metadata (Remove Author, Title, ID3 tags, etc.)", variable=self.strip_metadata_var)
+        self.strip_metadata_cb.pack(pady=10)
+
         # --- RADIO SETTINGS (WAV ONLY) ---
         self.radio_frame = ctk.CTkFrame(self)
         self.radio_frame.pack(pady=10, padx=20, fill="x")
         
         ctk.CTkLabel(self.radio_frame, text="Radio Transmission (VO) Settings", font=("Arial", 16, "bold"), text_color="#d97706").pack(pady=5)
-        ctk.CTkLabel(self.radio_frame, text="Note: These effects only apply to WAV output.", font=("Arial", 11, "italic"), text_color="#aaaaaa").pack(pady=(0, 10))
+        ctk.CTkLabel(self.radio_frame, text="Note: Effects only apply to WAV output.", font=("Arial", 11, "italic"), text_color="#aaaaaa").pack(pady=(0, 10))
         
         ctk.CTkLabel(self.radio_frame, text="Intro/Outro Beep Tone:", font=("Arial", 12, "bold")).pack()
         self.beep_var = ctk.StringVar(value="commbeep.wav (Radio/Orders)")
@@ -56,10 +64,11 @@ class BZRadio(ctk.CTk):
         
         ctk.CTkLabel(self.radio_frame, text="Radio Effect Intensity:", font=("Arial", 12, "bold")).pack()
         self.intensity_var = ctk.StringVar(value="medium")
-        self.intensity_dropdown = ctk.CTkComboBox(self.radio_frame, values=["light", "medium", "heavy"], variable=self.intensity_var, width=200)
+        # Added "none" to values
+        self.intensity_dropdown = ctk.CTkComboBox(self.radio_frame, values=["none", "light", "medium", "heavy"], variable=self.intensity_var, width=200)
         self.intensity_dropdown.pack(pady=5)
 
-        self.btn_radio = ctk.CTkButton(self, text="PROCESS WAV: Apply Radio FX (Game Audio)", command=self.handle_radio_request, fg_color="#d97706", hover_color="#b45309", height=50, font=("Arial", 14, "bold"))
+        self.btn_radio = ctk.CTkButton(self, text="PROCESS WAV: Convert to 8-Bit (Game Audio)", command=self.handle_radio_request, fg_color="#d97706", hover_color="#b45309", height=50, font=("Arial", 14, "bold"))
         self.btn_radio.pack(pady=15)
 
         # --- SEPARATOR ---
@@ -83,9 +92,6 @@ class BZRadio(ctk.CTk):
         # --- CONSOLE ---
         self.console = ctk.CTkTextbox(self, width=680, height=200, font=("Consolas", 11))
         self.console.pack(pady=10, padx=20)
-
-    # ... [Keep handle_radio_request, handle_ogg_request, etc. from previous script] ...
-    # (Including the PCM_U8 fix for WAV and libvorbis for OGG)
 
     def log(self, text):
         self.console.insert("end", text + "\n")
@@ -112,21 +118,35 @@ class BZRadio(ctk.CTk):
         if not files: return
         out_dir = os.path.join(os.path.dirname(files[0]), "bz98_radio_export")
         os.makedirs(out_dir, exist_ok=True)
-        i = self.intensity_var.get()
-        if i == 'light': hp, lp, comp = 300, 4000, "compand=.3|.3:1|1:-90/-60|-60/-40|-40/-30|-20/-20:6:0:-90:0.2"
-        elif i == 'heavy': hp, lp, comp = 700, 2500, "compand=.1|.1:1|1:-90/-60|-60/-30|-30/-20|-10/-10:12:0:-90:0.1"
-        else: hp, lp, comp = 500, 3000, "compand=.2|.2:1|1:-90/-60|-60/-40|-40/-20|-10/-10:8:0:-90:0.15"
+        
+        intensity = self.intensity_var.get()
+        meta_args = ['-map_metadata', '-1'] if self.strip_metadata_var.get() else []
         choice = self.beep_var.get()
         beep = COMM_BEEP if "comm" in choice else UNIT_BEEP if "unit" in choice else self.custom_beep_path if choice == "Custom..." else None
+
         for f in files:
             out_f = os.path.join(out_dir, os.path.splitext(os.path.basename(f))[0] + ".wav")
-            if beep:
-                cmd = [FFMPEG_EXE, '-y', '-i', beep, '-i', f, '-i', beep, '-filter_complex', 
-                       f"[0:a]aresample=22050,volume=0.3[b1]; [1:a]aresample=22050,highpass=f={hp},lowpass=f={lp},volume=2.0,{comp},tremolo=d=0.05:f=30[m]; [2:a]aresample=22050,volume=0.3[b2]; [b1][m][b2]concat=n=3:v=0:a=1[out]",
-                       '-map', '[out]', '-c:a', 'pcm_u8', '-ar', '22050', '-ac', '1', out_f]
+            
+            # Build Audio Filter Chain
+            if intensity == 'none':
+                # No radio FX, just ensure 22.05kHz resampling
+                af_chain = "aresample=22050"
             else:
-                cmd = [FFMPEG_EXE, '-y', '-i', f, '-af', f"aresample=22050,highpass=f={hp},lowpass=f={lp},volume=2.0,{comp},tremolo=d=0.05:f=30",
-                       '-c:a', 'pcm_u8', '-ar', '22050', '-ac', '1', out_f]
+                if intensity == 'light': hp, lp, comp = 300, 4000, "compand=.3|.3:1|1:-90/-60|-60/-40|-40/-30|-20/-20:6:0:-90:0.2"
+                elif intensity == 'heavy': hp, lp, comp = 700, 2500, "compand=.1|.1:1|1:-90/-60|-60/-30|-30/-20|-10/-10:12:0:-90:0.1"
+                else: hp, lp, comp = 500, 3000, "compand=.2|.2:1|1:-90/-60|-60/-40|-40/-20|-10/-10:8:0:-90:0.15"
+                af_chain = f"aresample=22050,highpass=f={hp},lowpass=f={lp},volume=2.0,{comp},tremolo=d=0.05:f=30"
+
+            if beep:
+                # Note: Concatenation requires all streams to have the same filters applied if handled via filter_complex
+                # To keep "none" clean, we just resample the main audio and combine with resampled beeps
+                cmd = [FFMPEG_EXE, '-y', '-i', beep, '-i', f, '-i', beep, '-filter_complex', 
+                       f"[0:a]aresample=22050,volume=0.3[b1]; [1:a]{af_chain}[m]; [2:a]aresample=22050,volume=0.3[b2]; [b1][m][b2]concat=n=3:v=0:a=1[out]",
+                       '-map', '[out]'] + meta_args + ['-c:a', 'pcm_u8', '-ar', '22050', '-ac', '1', out_f]
+            else:
+                cmd = [FFMPEG_EXE, '-y', '-i', f, '-af', af_chain] + \
+                       meta_args + ['-c:a', 'pcm_u8', '-ar', '22050', '-ac', '1', out_f]
+            
             subprocess.run(cmd, capture_output=True)
             self.log(f"Exported WAV: {os.path.basename(out_f)}")
 
@@ -135,9 +155,11 @@ class BZRadio(ctk.CTk):
         if not files: return
         out_dir = os.path.join(os.path.dirname(files[0]), "bz98_music_export")
         os.makedirs(out_dir, exist_ok=True)
+        meta_args = ['-map_metadata', '-1'] if self.strip_metadata_var.get() else []
+
         for f in files:
             out_f = os.path.join(out_dir, os.path.splitext(os.path.basename(f))[0] + ".ogg")
-            cmd = [FFMPEG_EXE, '-y', '-i', f, '-c:a', 'libvorbis', '-q:a', '5', '-ar', '44100', out_f]
+            cmd = [FFMPEG_EXE, '-y', '-i', f] + meta_args + ['-c:a', 'libvorbis', '-q:a', '5', '-ar', '44100', out_f]
             subprocess.run(cmd, capture_output=True)
             self.log(f"Exported OGG: {os.path.basename(out_f)}")
 
