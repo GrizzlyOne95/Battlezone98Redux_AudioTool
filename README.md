@@ -6,10 +6,11 @@
 
 ## Features
 
-- **Radio VO Mastering:** Automatically applies high-pass/low-pass filtering, compression, and tremolo to simulate authentic analog radio transmissions.
-- **Intro/Outro Beeps:** Automatically appends "squelch" tones to the start and end of transmissions. Supports `commbeep.wav` (orders), `unitbeep.wav` (responses), or custom user files.
+- **Radio VO Mastering:** Automatically applies high-pass/low-pass filtering, compression, and tremolo to simulate authentic analog radio transmissions. Can be disabled.
+- **Intro/Outro Beeps:** Automatically appends "squelch" tones to the start and end of transmissions. Supports `commbeep.wav` (orders), `unitbeep.wav` (responses), or custom user files. Can be disabled.
 - **8-Bit Enforcement:** Forces the specific **Unsigned 8-bit PCM WAV** (22050Hz Mono) format required by the BZ98 engine to prevent in-game audio crackling or playback speed issues.
 - **Music Soundtrack Path:** Converts audio to high-fidelity **Stereo OGG** (44100Hz) without radio distortion, perfect for background music.
+- **Metadata:** Can strip and remove all meta data and non-audio streams.
 - **Lua Timing Manifest:** Exports a CSV of file durations—essential for scripters to perfectly time subtitles and mission events in Lua.
 - **Batch & Single Mode:** Process an entire folder of source files or a single specific track with one click.
 
