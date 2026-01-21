@@ -78,6 +78,35 @@ class BZRadio(ctk.CTk):
         self.radio_frame.pack(pady=10, padx=20, fill="x")
         ctk.CTkLabel(self.radio_frame, text="WAV: Unit VO & Radio Effects", font=("Arial", 16, "bold"), text_color="#d97706").pack(pady=5)
         
+        self.fx_frame = ctk.CTkFrame(self.radio_frame, fg_color="transparent")
+        self.fx_frame.pack(pady=5)
+
+        self.phaser_var = ctk.BooleanVar(value=False)
+        self.phaser_cb = ctk.CTkCheckBox(self.fx_frame, text="Phaser", variable=self.phaser_var)
+        self.phaser_cb.grid(row=0, column=0, padx=10)
+
+        self.echo_var = ctk.BooleanVar(value=False)
+        self.echo_cb = ctk.CTkCheckBox(self.fx_frame, text="Doubling/Echo", variable=self.echo_var)
+        self.echo_cb.grid(row=0, column=1, padx=10)
+
+        # --- NEW: Echo Delay Slider ---
+        self.echo_delay_var = ctk.DoubleVar(value=40) # Default to 40ms
+        self.echo_slider = ctk.CTkSlider(
+            self.radio_frame, 
+            from_=10, 
+            to=100, 
+            variable=self.echo_delay_var,
+            number_of_steps=18, # Increments of 5ms
+            width=200
+        )
+        self.echo_slider.pack(pady=(0, 10))
+
+        self.echo_label = ctk.CTkLabel(self.radio_frame, text="Echo Delay: 40ms", font=("Arial", 10))
+        self.echo_label.pack()
+
+        # Update label when slider moves
+        self.echo_slider.configure(command=lambda v: self.echo_label.configure(text=f"Echo Delay: {int(v)}ms"))
+        
         ctk.CTkLabel(self.radio_frame, text="Intro/Outro Squelch Tone:", font=("Arial", 12, "bold")).pack()
         self.beep_var = ctk.StringVar(value="commbeep.wav (Radio/Orders)")
         self.beep_dropdown = ctk.CTkComboBox(self.radio_frame, values=["commbeep.wav (Radio/Orders)", "unitbeep.wav (Unit Responses)", "Custom...", "None"], variable=self.beep_var, width=350, command=self.check_custom_beep)
@@ -152,35 +181,58 @@ class BZRadio(ctk.CTk):
             out_ext = ".wav" if mode == "wav" else ".ogg"
             out_f = os.path.join(out_dir, os.path.splitext(os.path.basename(f))[0] + out_ext)
             
-            if mode == "wav":
-                intensity = self.intensity_var.get()
-                choice = self.beep_var.get()
-                beep = COMM_BEEP if "comm" in choice else UNIT_BEEP if "unit" in choice else self.custom_beep_path if choice == "Custom..." else None
-                
-                # Filter intensity definitions
-                if intensity == 'none':
-                    af_chain = "aresample=22050"
-                else:
-                    hp, lp, comp = (300, 4000, "compand=.3|.3:1|1:-90/-60|-60/-40|-40/-30|-20/-20:6:0:-90:0.2") if intensity == 'light' else \
-                                   (700, 2500, "compand=.1|.1:1|1:-90/-60|-60/-30|-30/-20|-10/-10:12:0:-90:0.1") if intensity == 'heavy' else \
-                                   (500, 3000, "compand=.2|.2:1|1:-90/-60|-60/-40|-40/-20|-10/-10:8:0:-90:0.15")
-                    af_chain = f"aresample=22050,highpass=f={hp},lowpass=f={lp},volume=2.0,{comp},tremolo=d=0.05:f=30"
-
-                if beep:
-                    # Concat beep-voice-beep
-                    cmd = [FFMPEG_EXE, '-y', '-i', beep, '-i', f, '-i', beep, '-filter_complex', 
-                           f"[0:a]aresample=22050,volume=0.3[b1]; [1:a]{af_chain}[m]; [2:a]aresample=22050,volume=0.3[b2]; [b1][m][b2]concat=n=3:v=0:a=1[out]",
-                           '-map', '[out]'] + scrub_args + ['-c:a', 'pcm_u8', '-ar', '22050', '-ac', '1', out_f]
-                else:
-                    # Voice only
-                    cmd = [FFMPEG_EXE, '-y', '-i', f, '-af', af_chain] + scrub_args + ['-c:a', 'pcm_u8', '-ar', '22050', '-ac', '1', out_f]
+        if mode == "wav":
+            # --- 1. DEFINE BEEP FILENAMES ---
+            intensity = self.intensity_var.get()
+            choice = self.beep_var.get()
+            beep = COMM_BEEP if "comm" in choice else \
+                   UNIT_BEEP if "unit" in choice else \
+                   self.custom_beep_path if choice == "Custom..." else None
+            
+            # --- 2. BUILD FILTER CHAIN ---
+            if intensity == 'none':
+                af_chain = "aresample=22050"
             else:
-                # OGG processing: Map strictly to audio stream to discard cover art
-                cmd = [FFMPEG_EXE, '-y', '-i', f, '-map', '0:a'] + scrub_args + ['-c:a', 'libvorbis', '-q:a', '5', '-ar', '44100', out_f]
+                hp, lp, comp = (300, 4000, "compand=.3|.3:1|1:-90/-60|-60/-40|-40/-30|-20/-20:6:0:-90:0.2") if intensity == 'light' else \
+                               (700, 2500, "compand=.1|.1:1|1:-90/-60|-60/-30|-30/-20|-10/-10:12:0:-90:0.1") if intensity == 'heavy' else \
+                               (500, 3000, "compand=.2|.2:1|1:-90/-60|-60/-40|-40/-20|-10/-10:8:0:-90:0.15")
+                af_chain = f"aresample=22050,highpass=f={hp},lowpass=f={lp},volume=2.0,{comp}"
 
-            # Execute silently (no CMD window popup)
-            subprocess.run(cmd, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
-            self.log(f"Exported: {os.path.basename(out_f)}")
+            # Add Phaser
+            if self.phaser_var.get():
+                af_chain += ",aphaser=in_gain=0.8:out_gain=0.9:delay=3.0:decay=0.4:speed=0.2:type=t"
+
+            # Add Doubling / Reverb Echo
+            if self.echo_var.get():
+                # Get value from slider (converted to integer)
+                delay_ms = int(self.echo_delay_var.get())
+                
+                # aecho parameters: [in_volume]:[out_volume]:[delay]:[decay]
+                # We use the slider for the 'delay' parameter
+                af_chain += f",aecho=0.8:0.9:{delay_ms}:0.3"
+
+            # Add Tremolo (only if intensity isn't none)
+            if intensity != 'none':
+                af_chain += ",tremolo=d=0.05:f=30"
+
+            # --- 3. CONSTRUCT COMMAND ---
+            if beep:
+                # Concat beep-voice-beep
+                cmd = [FFMPEG_EXE, '-y', '-i', beep, '-i', f, '-i', beep, '-filter_complex', 
+                       f"[0:a]aresample=22050,volume=0.3[b1]; [1:a]{af_chain}[m]; [2:a]aresample=22050,volume=0.3[b2]; [b1][m][b2]concat=n=3:v=0:a=1[out]",
+                       '-map', '[out]'] + scrub_args + ['-c:a', 'pcm_u8', '-ar', '22050', '-ac', '1', out_f]
+            else:
+                # Voice only
+                cmd = [FFMPEG_EXE, '-y', '-i', f, '-af', af_chain] + scrub_args + ['-c:a', 'pcm_u8', '-ar', '22050', '-ac', '1', out_f]
+        
+        else:
+            # --- 4. OGG PROCESSING ---
+            # Map strictly to audio stream to discard cover art
+            cmd = [FFMPEG_EXE, '-y', '-i', f, '-map', '0:a'] + scrub_args + ['-c:a', 'libvorbis', '-q:a', '5', '-ar', '44100', out_f]
+
+        # --- 5. EXECUTION ---
+        subprocess.run(cmd, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        self.log(f"Exported: {os.path.basename(out_f)}")
 
         # Final UI Reset
         self.prog_label.configure(text="Batch Complete!")
