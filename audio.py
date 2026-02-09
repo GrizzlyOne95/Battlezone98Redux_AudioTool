@@ -4,8 +4,10 @@ import csv
 import subprocess
 import threading
 import soundfile as sf
-import customtkinter as ctk
-from tkinter import filedialog, messagebox
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+import ctypes
+from datetime import datetime
 
 # --- UTILITY FUNCTIONS ---
 def get_resource_path(relative_path):
@@ -20,130 +22,235 @@ FFMPEG_EXE = get_resource_path("ffmpeg.exe")
 COMM_BEEP = get_resource_path("commbeep.wav")
 UNIT_BEEP = get_resource_path("unitbeep.wav")
 
-class BZRadio(ctk.CTk):
+class ToolTip:
+    def __init__(self, widget, text, bg="#1a1a1a", fg="#00ffff"):
+        self.widget = widget
+        self.text = text
+        self.bg = bg
+        self.fg = fg
+        self.tip_window = None
+        widget.bind("<Enter>", self.show_tip)
+        widget.bind("<Leave>", self.hide_tip)
+
+    def show_tip(self, event=None):
+        x = self.widget.winfo_rootx() + 25
+        y = self.widget.winfo_rooty() + 20
+        self.tip_window = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        label = tk.Label(tw, text=self.text, justify='left',
+                       background=self.bg, foreground=self.fg, 
+                       relief='solid', borderwidth=1, font=("Consolas", "9"))
+        label.pack(ipadx=1)
+
+    def hide_tip(self, event=None):
+        if self.tip_window:
+            self.tip_window.destroy()
+            self.tip_window = None
+
+class BZRadio(tk.Tk):
     def __init__(self):
         super().__init__()
         
         # --- WINDOW CONFIGURATION ---
         self.title("BZRadio - Battlezone 98 Redux Audio Tool")
-        self.geometry("750x1100")
+        self.geometry("800x950")
         self.custom_beep_path = None
         
-        # Set the window icon (BZRadio branding)
+        # Theme Configuration (Matching cmd.py BZ98R)
+        self.colors = {
+            "bg": "#0a0a0a", "fg": "#d4d4d4",
+            "highlight": "#00ff00", "dark_highlight": "#004400", "accent": "#00ffff"
+        }
+        self.configure(bg=self.colors["bg"])
+        
+        # Font Loading
+        self.font_name = "Consolas"
+        self.load_custom_fonts()
+
+        # Set the window icon
         try:
             self.iconpath = get_resource_path("bzradio.ico")
-            self.wm_iconbitmap(self.iconpath)
+            self.iconbitmap(self.iconpath)
         except:
             pass 
 
+        self.setup_styles()
+        self.setup_ui()
+
+    def load_custom_fonts(self):
+        # Specific BZ98R font as per cmd.py
+        font_file = "BZONE.ttf"
+        font_path = get_resource_path(font_file)
+        if os.path.exists(font_path) and sys.platform == "win32":
+            try:
+                if ctypes.windll.gdi32.AddFontResourceExW(font_path, 0x10, 0) > 0:
+                    self.font_name = "BZONE"
+            except: pass
+
+    def setup_styles(self):
+        style = ttk.Style()
+        style.theme_use('default')
+        
+        c = self.colors
+        main_font = (self.font_name, 10)
+        bold_font = (self.font_name, 11, "bold")
+        header_font = (self.font_name, 12, "bold")
+
+        style.configure(".", background=c["bg"], foreground=c["fg"], font=main_font, bordercolor=c["dark_highlight"])
+        style.configure("TFrame", background=c["bg"])
+        style.configure("TLabelframe", background=c["bg"], bordercolor=c["highlight"])
+        style.configure("TLabelframe.Label", background=c["bg"], foreground=c["highlight"], font=bold_font)
+        style.configure("TLabel", background=c["bg"], foreground=c["fg"])
+        style.configure("Header.TLabel", foreground=c["accent"], font=("Courier", 24, "bold")) # Main Title
+        style.configure("Sub.TLabel", foreground=c["fg"], font=("Arial", 10, "italic"))
+        
+        style.configure("TButton", background="#1a1a1a", foreground=c["fg"], borderwidth=1, focuscolor=c["highlight"])
+        style.map("TButton", background=[("active", c["dark_highlight"])], foreground=[("active", c["highlight"])])
+        
+        style.configure("Action.TButton", font=bold_font, foreground=c["highlight"])
+        style.configure("Primary.TButton", font=bold_font, foreground=c["accent"])
+        
+        style.configure("TRadiobutton", background=c["bg"], foreground=c["fg"], indicatorcolor=c["bg"], indicatorrelief="raised")
+        style.map("TRadiobutton", indicatorcolor=[("selected", c["highlight"])], foreground=[("selected", c["highlight"])])
+        
+        style.configure("TCheckbutton", background=c["bg"], foreground=c["fg"], indicatorcolor=c["bg"], indicatorrelief="raised")
+        style.map("TCheckbutton", indicatorcolor=[("selected", c["highlight"])], foreground=[("selected", c["highlight"])])
+
+        style.configure("BZ.Horizontal.TProgressbar", thickness=20, background=c["highlight"], troughcolor="#050505", bordercolor=c["dark_highlight"])
+        
+        # Combobox style
+        style.map("TCombobox", fieldbackground=[("readonly", "#1a1a1a")], selectbackground=[("readonly", c["dark_highlight"])], selectforeground=[("readonly", c["highlight"])])
+
+    def setup_ui(self):
         # --- HEADER SECTION ---
-        self.header = ctk.CTkLabel(self, text="BZRadio", font=("Courier", 42, "bold"))
-        self.header.pack(pady=(20, 5))
-        self.sub = ctk.CTkLabel(self, text="Audio Architect for BZ98 Redux", font=("Arial", 13, "italic"))
-        self.sub.pack(pady=(0, 15))
+        header_frame = ttk.Frame(self)
+        header_frame.pack(pady=(20, 5))
+        ttk.Label(header_frame, text="BZRadio", style="Header.TLabel").pack()
+        ttk.Label(header_frame, text="AUDIO ARCHITECT FOR BZ98 REDUX", style="Sub.TLabel").pack()
 
-        # --- PROGRESS & STATUS ---
-        self.prog_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.prog_frame.pack(pady=10, padx=20, fill="x")
+        # --- MAIN CONTAINER ---
+        main_frame = ttk.Frame(self)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+        # --- 1. CONFIGURATION ---
+        config_group = ttk.LabelFrame(main_frame, text=" SYSTEM CONFIGURATION ", padding=10)
+        config_group.pack(fill="x", pady=5)
+
+        # Process Mode (Batch vs Single)
+        self.process_mode = tk.StringVar(value="batch")
+        mode_frame = ttk.Frame(config_group)
+        mode_frame.pack(fill="x", pady=5)
+        ttk.Label(mode_frame, text="INPUT SOURCE:", font=(self.font_name, 10, "bold"), foreground=self.colors["accent"]).pack(side="left", padx=(0, 10))
+        ttk.Radiobutton(mode_frame, text="BATCH FOLDER", variable=self.process_mode, value="batch").pack(side="left", padx=10)
+        ttk.Radiobutton(mode_frame, text="SINGLE FILE", variable=self.process_mode, value="single").pack(side="left", padx=10)
+
+        # Privacy
+        self.strip_metadata_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(config_group, text="STRIP METADATA (PII Scrub)", variable=self.strip_metadata_var).pack(anchor="w", pady=5)
+
+        # --- 2. RADIO TRANSMISSION (WAV) ---
+        wav_group = ttk.LabelFrame(main_frame, text=" RADIO TRANSMISSION PROTOCOL (WAV) ", padding=10)
+        wav_group.pack(fill="x", pady=10)
+
+        # Effects Row
+        fx_row = ttk.Frame(wav_group)
+        fx_row.pack(fill="x", pady=5)
         
-        self.prog_label = ctk.CTkLabel(self.prog_frame, text="Ready to process", font=("Arial", 12))
-        self.prog_label.pack()
+        self.phaser_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(fx_row, text="ENABLE PHASER", variable=self.phaser_var).pack(side="left", padx=(0, 15))
         
-        self.progress_bar = ctk.CTkProgressBar(self.prog_frame, width=600)
-        self.progress_bar.set(0)
-        self.progress_bar.pack(pady=5)
+        self.echo_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(fx_row, text="ENABLE ECHO", variable=self.echo_var).pack(side="left", padx=(0, 15))
 
-        # --- SELECTION MODE ---
-        self.mode_frame = ctk.CTkFrame(self)
-        self.mode_frame.pack(pady=5, padx=20, fill="x")
-        self.process_mode = ctk.StringVar(value="batch")
-        ctk.CTkRadioButton(self.mode_frame, text="Batch Folder", variable=self.process_mode, value="batch").grid(row=0, column=0, padx=60, pady=10)
-        ctk.CTkRadioButton(self.mode_frame, text="Single File", variable=self.process_mode, value="single").grid(row=0, column=1, padx=60, pady=10)
-
-        # --- GLOBAL SETTINGS ---
-        self.global_frame = ctk.CTkFrame(self)
-        self.global_frame.pack(pady=10, padx=20, fill="x")
-        ctk.CTkLabel(self.global_frame, text="Privacy & Security", font=("Arial", 14, "bold")).pack(pady=5)
+        # Echo Delay Slider
+        slider_frame = ttk.Frame(fx_row)
+        slider_frame.pack(side="left", fill="x", expand=True)
         
-        self.strip_metadata_var = ctk.BooleanVar(value=True)
-        self.strip_metadata_cb = ctk.CTkCheckBox(
-            self.global_frame, 
-            text="Strip all metadata & Artwork (Full PII Scrub)", 
-            variable=self.strip_metadata_var
-        )
-        self.strip_metadata_cb.pack(pady=10)
-
-        # --- RADIO TRANSMISSION SETTINGS (WAV) ---
-        self.radio_frame = ctk.CTkFrame(self)
-        self.radio_frame.pack(pady=10, padx=20, fill="x")
-        ctk.CTkLabel(self.radio_frame, text="WAV: Unit VO & Radio Effects", font=("Arial", 16, "bold"), text_color="#d97706").pack(pady=5)
+        self.echo_delay_var = tk.DoubleVar(value=40)
+        self.echo_label = ttk.Label(slider_frame, text="DELAY: 40ms", width=12)
+        self.echo_label.pack(side="left", padx=5)
         
-        self.fx_frame = ctk.CTkFrame(self.radio_frame, fg_color="transparent")
-        self.fx_frame.pack(pady=5)
+        self.echo_slider = ttk.Scale(slider_frame, from_=10, to=100, variable=self.echo_delay_var, orient="horizontal", command=self.update_slider_label)
+        self.echo_slider.pack(side="left", fill="x", expand=True, padx=5)
 
-        self.phaser_var = ctk.BooleanVar(value=False)
-        self.phaser_cb = ctk.CTkCheckBox(self.fx_frame, text="Phaser", variable=self.phaser_var)
-        self.phaser_cb.grid(row=0, column=0, padx=10)
-
-        self.echo_var = ctk.BooleanVar(value=False)
-        self.echo_cb = ctk.CTkCheckBox(self.fx_frame, text="Doubling/Echo", variable=self.echo_var)
-        self.echo_cb.grid(row=0, column=1, padx=10)
-
-        # --- NEW: Echo Delay Slider ---
-        self.echo_delay_var = ctk.DoubleVar(value=40) # Default to 40ms
-        self.echo_slider = ctk.CTkSlider(
-            self.radio_frame, 
-            from_=10, 
-            to=100, 
-            variable=self.echo_delay_var,
-            number_of_steps=18, # Increments of 5ms
-            width=200
-        )
-        self.echo_slider.pack(pady=(0, 10))
-
-        self.echo_label = ctk.CTkLabel(self.radio_frame, text="Echo Delay: 40ms", font=("Arial", 10))
-        self.echo_label.pack()
-
-        # Update label when slider moves
-        self.echo_slider.configure(command=lambda v: self.echo_label.configure(text=f"Echo Delay: {int(v)}ms"))
+        # Tone & Intensity
+        opts_row = ttk.Frame(wav_group)
+        opts_row.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(self.radio_frame, text="Intro/Outro Squelch Tone:", font=("Arial", 12, "bold")).pack()
-        self.beep_var = ctk.StringVar(value="commbeep.wav (Radio/Orders)")
-        self.beep_dropdown = ctk.CTkComboBox(self.radio_frame, values=["commbeep.wav (Radio/Orders)", "unitbeep.wav (Unit Responses)", "Custom...", "None"], variable=self.beep_var, width=350, command=self.check_custom_beep)
-        self.beep_dropdown.pack(pady=5)
+        # Squelch Tone
+        ttk.Label(opts_row, text="SQUELCH TONE:").pack(side="left")
+        self.beep_var = tk.StringVar(value="commbeep.wav (Radio/Orders)")
+        self.beep_dropdown = ttk.Combobox(opts_row, textvariable=self.beep_var, state="readonly", width=35)
+        self.beep_dropdown['values'] = ["commbeep.wav (Radio/Orders)", "unitbeep.wav (Unit Responses)", "Custom...", "None"]
+        self.beep_dropdown.pack(side="left", padx=(5, 20))
+        self.beep_dropdown.bind("<<ComboboxSelected>>", self.check_custom_beep)
+
+        # Intensity
+        ttk.Label(opts_row, text="INTENSITY:").pack(side="left")
+        self.intensity_var = tk.StringVar(value="medium")
+        self.intensity_dropdown = ttk.Combobox(opts_row, textvariable=self.intensity_var, state="readonly", width=10)
+        self.intensity_dropdown['values'] = ["none", "light", "medium", "heavy"]
+        self.intensity_dropdown.pack(side="left", padx=5)
+
+        # Action Button
+        self.btn_radio = ttk.Button(wav_group, text="INITIATE WAV PROCESSING", command=lambda: self.start_thread("wav"), style="Action.TButton")
+        self.btn_radio.pack(fill="x", pady=(10, 0), ipady=5)
+
+        # --- 3. MUSIC PROCESSING (OGG) ---
+        ogg_group = ttk.LabelFrame(main_frame, text=" MUSIC ENCODING (OGG) ", padding=10)
+        ogg_group.pack(fill="x", pady=5)
         
-        ctk.CTkLabel(self.radio_frame, text="Radio Effect Intensity:", font=("Arial", 12, "bold")).pack()
-        self.intensity_var = ctk.StringVar(value="medium")
-        self.intensity_dropdown = ctk.CTkComboBox(self.radio_frame, values=["none", "light", "medium", "heavy"], variable=self.intensity_var, width=200)
-        self.intensity_dropdown.pack(pady=5)
+        self.btn_ogg = ttk.Button(ogg_group, text="INITIATE OGG ENCODING", command=lambda: self.start_thread("ogg"), style="Primary.TButton")
+        self.btn_ogg.pack(fill="x", ipady=5)
 
-        self.btn_radio = ctk.CTkButton(self, text="PROCESS WAV (Game Audio)", command=lambda: self.start_thread("wav"), fg_color="#d97706", hover_color="#b45309", height=50, font=("Arial", 14, "bold"))
-        self.btn_radio.pack(pady=15)
+        # --- 4. UTILITIES ---
+        util_frame = ttk.Frame(main_frame)
+        util_frame.pack(fill="x", pady=10)
+        
+        self.btn_csv = ttk.Button(util_frame, text="EXPORT TIMING MANIFEST (CSV)", command=self.export_csv)
+        self.btn_csv.pack(fill="x")
 
-        # --- MUSIC SETTINGS (OGG) ---
-        self.btn_ogg = ctk.CTkButton(self, text="PROCESS OGG (Clean Music)", command=lambda: self.start_thread("ogg"), fg_color="#1f538d", hover_color="#163a63", height=50, font=("Arial", 14, "bold"))
-        self.btn_ogg.pack(pady=5)
+        # --- 5. LOG & PROGRESS ---
+        log_frame = ttk.LabelFrame(main_frame, text=" HUD LOG ", padding=10)
+        log_frame.pack(fill="both", expand=True, pady=5)
+        
+        self.log_box = tk.Text(log_frame, height=10, bg="#050505", fg=self.colors["fg"], 
+                             font=("Consolas", 9), state="disabled", relief="flat", padx=5, pady=5)
+        self.log_box.pack(fill="both", expand=True)
 
-        # --- UTILITIES ---
-        self.btn_csv = ctk.CTkButton(self, text="Export CSV Timing Manifest", command=self.export_csv, fg_color="#2b7a3e", hover_color="#1e562c")
-        self.btn_csv.pack(pady=20)
-
-        # --- CONSOLE LOG ---
-        self.console = ctk.CTkTextbox(self, width=680, height=180, font=("Consolas", 11))
-        self.console.pack(pady=10, padx=20)
+        # Log Tags
+        self.log_box.tag_config("timestamp", foreground="#666666")
+        self.log_box.tag_config("success", foreground=self.colors["highlight"])
+        self.log_box.tag_config("warning", foreground="#ffff00")
+        self.log_box.tag_config("error", foreground="#ff0000")
+        
+        self.progress = ttk.Progressbar(main_frame, style="BZ.Horizontal.TProgressbar", mode="determinate")
+        self.progress.pack(fill="x", pady=(5, 0))
+        
+        self.status_label = tk.Label(main_frame, text="SYSTEM READY", bg=self.colors["bg"], fg="#666666", font=("Consolas", 8))
+        self.status_label.pack(pady=2)
 
     # --- LOGIC METHODS ---
 
-    def log(self, text):
-        self.console.insert("end", text + "\n")
-        self.console.see("end")
+    def update_slider_label(self, value):
+        self.echo_label.config(text=f"DELAY: {int(float(value))}ms")
 
-    def check_custom_beep(self, choice):
+    def log(self, text, tag=None):
+        self.log_box.config(state="normal")
+        ts = datetime.now().strftime("[%H:%M:%S] ")
+        self.log_box.insert("end", ts, "timestamp")
+        self.log_box.insert("end", text + "\n", tag)
+        self.log_box.see("end")
+        self.log_box.config(state="disabled")
+
+    def check_custom_beep(self, event=None):
+        choice = self.beep_var.get()
         if choice == "Custom...":
             path = filedialog.askopenfilename(title="Select Custom Beep WAV", filetypes=[("WAV files", "*.wav")])
             if path:
                 self.custom_beep_path = path
-                self.log(f"Custom beep loaded: {os.path.basename(path)}")
+                self.log(f"Custom beep loaded: {os.path.basename(path)}", "success")
             else:
                 self.beep_var.set("None")
 
@@ -158,9 +265,9 @@ class BZRadio(ctk.CTk):
         files = self.get_input_list()
         if not files: return
         
-        # Disable buttons to prevent double-processing
-        self.btn_radio.configure(state="disabled")
-        self.btn_ogg.configure(state="disabled")
+        # Disable buttons
+        self.btn_radio.state(['disabled'])
+        self.btn_ogg.state(['disabled'])
         
         threading.Thread(target=self.process_logic, args=(files, mode), daemon=True).start()
 
@@ -170,74 +277,68 @@ class BZRadio(ctk.CTk):
         out_dir = os.path.join(os.path.dirname(files[0]), out_subdir)
         os.makedirs(out_dir, exist_ok=True)
         
-        # Metadata and Artwork scrubbing flags
         scrub_args = ['-map_metadata', '-1', '-vn'] if self.strip_metadata_var.get() else []
 
         for index, f in enumerate(files):
-            # Update Progress Bar and Label
-            self.progress_bar.set((index + 1) / total)
-            self.prog_label.configure(text=f"Processing {index+1}/{total}: {os.path.basename(f)}")
+            # Update Progress
+            prog = (index + 1) / total * 100
+            self.progress['value'] = prog
+            self.status_label.config(text=f"PROCESSING {index+1}/{total}: {os.path.basename(f)}")
+            self.update_idletasks()
             
             out_ext = ".wav" if mode == "wav" else ".ogg"
             out_f = os.path.join(out_dir, os.path.splitext(os.path.basename(f))[0] + out_ext)
             
-        if mode == "wav":
-            # --- 1. DEFINE BEEP FILENAMES ---
-            intensity = self.intensity_var.get()
-            choice = self.beep_var.get()
-            beep = COMM_BEEP if "comm" in choice else \
-                   UNIT_BEEP if "unit" in choice else \
-                   self.custom_beep_path if choice == "Custom..." else None
-            
-            # --- 2. BUILD FILTER CHAIN ---
-            if intensity == 'none':
-                af_chain = "aresample=22050"
-            else:
-                hp, lp, comp = (300, 4000, "compand=.3|.3:1|1:-90/-60|-60/-40|-40/-30|-20/-20:6:0:-90:0.2") if intensity == 'light' else \
-                               (700, 2500, "compand=.1|.1:1|1:-90/-60|-60/-30|-30/-20|-10/-10:12:0:-90:0.1") if intensity == 'heavy' else \
-                               (500, 3000, "compand=.2|.2:1|1:-90/-60|-60/-40|-40/-20|-10/-10:8:0:-90:0.15")
-                af_chain = f"aresample=22050,highpass=f={hp},lowpass=f={lp},volume=2.0,{comp}"
-
-            # Add Phaser
-            if self.phaser_var.get():
-                af_chain += ",aphaser=in_gain=0.8:out_gain=0.9:delay=3.0:decay=0.4:speed=0.2:type=t"
-
-            # Add Doubling / Reverb Echo
-            if self.echo_var.get():
-                # Get value from slider (converted to integer)
-                delay_ms = int(self.echo_delay_var.get())
+            cmd = []
+            if mode == "wav":
+                # WAV LOGIC
+                intensity = self.intensity_var.get()
+                choice = self.beep_var.get()
+                beep = COMM_BEEP if "comm" in choice else \
+                       UNIT_BEEP if "unit" in choice else \
+                       self.custom_beep_path if choice == "Custom..." else None
                 
-                # aecho parameters: [in_volume]:[out_volume]:[delay]:[decay]
-                # We use the slider for the 'delay' parameter
-                af_chain += f",aecho=0.8:0.9:{delay_ms}:0.3"
+                # Filter Chain
+                if intensity == 'none':
+                    af_chain = "aresample=22050"
+                else:
+                    hp, lp, comp = (300, 4000, "compand=.3|.3:1|1:-90/-60|-60/-40|-40/-30|-20/-20:6:0:-90:0.2") if intensity == 'light' else \
+                                   (700, 2500, "compand=.1|.1:1|1:-90/-60|-60/-30|-30/-20|-10/-10:12:0:-90:0.1") if intensity == 'heavy' else \
+                                   (500, 3000, "compand=.2|.2:1|1:-90/-60|-60/-40|-40/-20|-10/-10:8:0:-90:0.15")
+                    af_chain = f"aresample=22050,highpass=f={hp},lowpass=f={lp},volume=2.0,{comp}"
 
-            # Add Tremolo (only if intensity isn't none)
-            if intensity != 'none':
-                af_chain += ",tremolo=d=0.05:f=30"
+                if self.phaser_var.get():
+                    af_chain += ",aphaser=in_gain=0.8:out_gain=0.9:delay=3.0:decay=0.4:speed=0.2:type=t"
 
-            # --- 3. CONSTRUCT COMMAND ---
-            if beep:
-                # Concat beep-voice-beep
-                cmd = [FFMPEG_EXE, '-y', '-i', beep, '-i', f, '-i', beep, '-filter_complex', 
-                       f"[0:a]aresample=22050,volume=0.3[b1]; [1:a]{af_chain}[m]; [2:a]aresample=22050,volume=0.3[b2]; [b1][m][b2]concat=n=3:v=0:a=1[out]",
-                       '-map', '[out]'] + scrub_args + ['-c:a', 'pcm_u8', '-ar', '22050', '-ac', '1', out_f]
+                if self.echo_var.get():
+                    delay_ms = int(self.echo_delay_var.get())
+                    af_chain += f",aecho=0.8:0.9:{delay_ms}:0.3"
+
+                if intensity != 'none':
+                    af_chain += ",tremolo=d=0.05:f=30"
+
+                if beep:
+                    cmd = [FFMPEG_EXE, '-y', '-i', beep, '-i', f, '-i', beep, '-filter_complex', 
+                           f"[0:a]aresample=22050,volume=0.3[b1]; [1:a]{af_chain}[m]; [2:a]aresample=22050,volume=0.3[b2]; [b1][m][b2]concat=n=3:v=0:a=1[out]",
+                           '-map', '[out]'] + scrub_args + ['-c:a', 'pcm_u8', '-ar', '22050', '-ac', '1', out_f]
+                else:
+                    cmd = [FFMPEG_EXE, '-y', '-i', f, '-af', af_chain] + scrub_args + ['-c:a', 'pcm_u8', '-ar', '22050', '-ac', '1', out_f]
+            
             else:
-                # Voice only
-                cmd = [FFMPEG_EXE, '-y', '-i', f, '-af', af_chain] + scrub_args + ['-c:a', 'pcm_u8', '-ar', '22050', '-ac', '1', out_f]
-        
-        else:
-            # --- 4. OGG PROCESSING ---
-            # Map strictly to audio stream to discard cover art
-            cmd = [FFMPEG_EXE, '-y', '-i', f, '-map', '0:a'] + scrub_args + ['-c:a', 'libvorbis', '-q:a', '5', '-ar', '44100', out_f]
+                # OGG LOGIC
+                cmd = [FFMPEG_EXE, '-y', '-i', f, '-map', '0:a'] + scrub_args + ['-c:a', 'libvorbis', '-q:a', '5', '-ar', '44100', out_f]
 
-        # --- 5. EXECUTION ---
-        subprocess.run(cmd, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
-        self.log(f"Exported: {os.path.basename(out_f)}")
+            # Execute
+            try:
+                subprocess.run(cmd, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                self.log(f"Exported: {os.path.basename(out_f)}", "success")
+            except Exception as e:
+                self.log(f"Error processing {os.path.basename(f)}: {e}", "error")
 
-        # Final UI Reset
-        self.prog_label.configure(text="Batch Complete!")
-        self.btn_radio.configure(state="normal")
-        self.btn_ogg.configure(state="normal")
+        # Completion
+        self.status_label.config(text="OPERATION COMPLETE")
+        self.btn_radio.state(['!disabled'])
+        self.btn_ogg.state(['!disabled'])
         messagebox.showinfo("Success", f"Successfully processed {total} files.")
 
     def export_csv(self):
@@ -249,13 +350,15 @@ class BZRadio(ctk.CTk):
         with open(save_path, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(["Filename", "Duration", "Type"])
+            count = 0
             for file in os.listdir(folder):
                 if file.lower().endswith(('.wav', '.ogg')):
                     try:
                         info = sf.info(os.path.join(folder, file))
                         writer.writerow([file, round(info.duration, 3), "OGG" if file.endswith(".ogg") else "WAV"])
+                        count += 1
                     except: continue
-        self.log(f"Timing manifest saved to: {save_path}")
+        self.log(f"Manifest exported with {count} entries to: {save_path}", "success")
 
 if __name__ == "__main__":
     app = BZRadio()
