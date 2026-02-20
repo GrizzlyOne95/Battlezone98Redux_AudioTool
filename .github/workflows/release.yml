@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  create:
+    tags:
+      - v*
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - os: windows-latest
+            asset_name: Battlezone98Redux_AudioTool-win
+            pyinstaller_build_dir: dist/audio
+            final_asset: Battlezone98Redux_AudioTool-win.zip
+          - os: ubuntu-latest
+            asset_name: Battlezone98Redux_AudioTool-linux
+            pyinstaller_build_dir: dist/audio
+            final_asset: Battlezone98Redux_AudioTool-linux.tar.gz
+          - os: macos-latest
+            asset_name: Battlezone98Redux_AudioTool-mac
+            pyinstaller_build_dir: dist/audio.app
+            final_asset: Battlezone98Redux_AudioTool-mac.zip
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Install FFMPEG (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        $ffmpegUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+        $ffmpegZip = "ffmpeg.zip"
+        Invoke-WebRequest -Uri $ffmpegUrl -OutFile $ffmpegZip
+        Expand-Archive -Path $ffmpegZip -DestinationPath .
+        $ffmpegPath = (Get-ChildItem -Path . -Filter "ffmpeg-*-essentials_build" -Directory).FullName
+        Add-Content $env:GITHUB_PATH "$ffmpegPath\bin"
+      shell: powershell
+
+    - name: Install FFMPEG (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg
+
+    - name: Install FFMPEG (macOS)
+      if: matrix.os == 'macos-latest'
+      run: brew install ffmpeg
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller audio.py --onefile --windowed `
+          --add-data "BZONE.ttf:." `
+          --add-data "bzradio.ico:." `
+          --add-data "commbeep.wav:." `
+          --add-data "unitbeep.wav:." `
+          --add-data "LICENSE:."
+      shell: powershell
+
+    - name: Package Application (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        Compress-Archive -Path ${{ matrix.pyinstaller_build_dir }} -DestinationPath ${{ matrix.final_asset }}
+      shell: powershell
+
+    - name: Package Application (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        tar -czvf ${{ matrix.final_asset }} -C ${{ matrix.pyinstaller_build_dir }} .
+
+    - name: Package Application (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        zip -r ${{ matrix.final_asset }} ${{ matrix.pyinstaller_build_dir }}
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.asset_name }}
+        path: ${{ matrix.final_asset }}
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/*/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
