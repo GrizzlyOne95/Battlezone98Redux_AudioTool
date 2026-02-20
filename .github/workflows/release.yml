@@ -17,15 +17,15 @@ jobs:
         include:
           - os: windows-latest
             asset_name: Battlezone98Redux_AudioTool-win
-            pyinstaller_build_dir: dist/audio
+            pyinstaller_output: dist/audio.exe
             final_asset: Battlezone98Redux_AudioTool-win.zip
           - os: ubuntu-latest
             asset_name: Battlezone98Redux_AudioTool-linux
-            pyinstaller_build_dir: dist/audio
+            pyinstaller_output: dist/audio
             final_asset: Battlezone98Redux_AudioTool-linux.tar.gz
           - os: macos-latest
             asset_name: Battlezone98Redux_AudioTool-mac
-            pyinstaller_build_dir: dist/audio.app
+            pyinstaller_output: dist/audio.app
             final_asset: Battlezone98Redux_AudioTool-mac.zip
 
     steps:
@@ -68,18 +68,18 @@ jobs:
     - name: Package Application (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        Compress-Archive -Path ${{ matrix.pyinstaller_build_dir }} -DestinationPath ${{ matrix.final_asset }}
+        Compress-Archive -Path ${{ matrix.pyinstaller_output }} -DestinationPath ${{ matrix.final_asset }}
       shell: powershell
 
     - name: Package Application (Linux)
       if: matrix.os == 'ubuntu-latest'
       run: |
-        tar -czvf ${{ matrix.final_asset }} -C ${{ matrix.pyinstaller_build_dir }} .
+        tar -czvf ${{ matrix.final_asset }} -C dist audio
 
     - name: Package Application (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        zip -r ${{ matrix.final_asset }} ${{ matrix.pyinstaller_build_dir }}
+        zip -r ${{ matrix.final_asset }} ${{ matrix.pyinstaller_output }}
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
