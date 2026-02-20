@@ -63,14 +63,7 @@ jobs:
         pip install -r requirements.txt
 
     - name: Build with PyInstaller
-      run: |
-        pyinstaller audio.py --onefile --windowed `
-          --add-data "BZONE.ttf:." `
-          --add-data "bzradio.ico:." `
-          --add-data "commbeep.wav:." `
-          --add-data "unitbeep.wav:." `
-          --add-data "LICENSE:."
-      shell: powershell
+      run: pyinstaller audio.py --onefile --windowed --add-data "BZONE.ttf:." --add-data "bzradio.ico:." --add-data "commbeep.wav:." --add-data "unitbeep.wav:." --add-data "LICENSE:."
 
     - name: Package Application (Windows)
       if: matrix.os == 'windows-latest'
