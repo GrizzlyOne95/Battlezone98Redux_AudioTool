@@ -1,8 +1,10 @@
 import os
 import sys
 import csv
+import wave
 import subprocess
 import threading
+import tempfile
 import soundfile as sf
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -21,6 +23,29 @@ def get_resource_path(relative_path):
 FFMPEG_EXE = get_resource_path("ffmpeg.exe")
 COMM_BEEP = get_resource_path("commbeep.wav")
 UNIT_BEEP = get_resource_path("unitbeep.wav")
+
+WAV_PROFILE_RADIO = "radio"
+WAV_PROFILE_LOOP = "loop"
+
+
+def rewrite_plain_riff_wav(source_path, output_path):
+    """Rewrite a PCM WAV as plain RIFF/WAVE with only fmt + data chunks."""
+    with wave.open(source_path, "rb") as src:
+        params = src.getparams()
+        if params.comptype != "NONE":
+            raise ValueError(f"Expected PCM WAV, got {params.comptype}")
+
+        with wave.open(output_path, "wb") as dst:
+            dst.setnchannels(params.nchannels)
+            dst.setsampwidth(params.sampwidth)
+            dst.setframerate(params.framerate)
+
+            frames_per_chunk = max(1, 65536 // max(1, params.sampwidth * params.nchannels))
+            while True:
+                frames = src.readframes(frames_per_chunk)
+                if not frames:
+                    break
+                dst.writeframes(frames)
 
 class ToolTip:
     def __init__(self, widget, text, bg="#1a1a1a", fg="#00ffff"):
@@ -153,15 +178,26 @@ class BZRadio(tk.Tk):
         wav_group = ttk.LabelFrame(main_frame, text=" RADIO TRANSMISSION PROTOCOL (WAV) ", padding=10)
         wav_group.pack(fill="x", pady=10)
 
+        profile_row = ttk.Frame(wav_group)
+        profile_row.pack(fill="x", pady=5)
+        ttk.Label(profile_row, text="WAV PROFILE:").pack(side="left")
+        self.wav_profile_var = tk.StringVar(value="Radio VO (22050Hz)")
+        self.wav_profile_dropdown = ttk.Combobox(profile_row, textvariable=self.wav_profile_var, state="readonly", width=28)
+        self.wav_profile_dropdown["values"] = ["Radio VO (22050Hz)", "Thrust/Turbo Loop (11025Hz)"]
+        self.wav_profile_dropdown.pack(side="left", padx=(5, 20))
+        self.wav_profile_dropdown.bind("<<ComboboxSelected>>", self.update_wav_profile_ui)
+
         # Effects Row
         fx_row = ttk.Frame(wav_group)
         fx_row.pack(fill="x", pady=5)
         
         self.phaser_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(fx_row, text="ENABLE PHASER", variable=self.phaser_var).pack(side="left", padx=(0, 15))
+        self.phaser_check = ttk.Checkbutton(fx_row, text="ENABLE PHASER", variable=self.phaser_var)
+        self.phaser_check.pack(side="left", padx=(0, 15))
         
         self.echo_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(fx_row, text="ENABLE ECHO", variable=self.echo_var).pack(side="left", padx=(0, 15))
+        self.echo_check = ttk.Checkbutton(fx_row, text="ENABLE ECHO", variable=self.echo_var)
+        self.echo_check.pack(side="left", padx=(0, 15))
 
         # Echo Delay Slider
         slider_frame = ttk.Frame(fx_row)
@@ -231,10 +267,36 @@ class BZRadio(tk.Tk):
         self.status_label = tk.Label(main_frame, text="SYSTEM READY", bg=self.colors["bg"], fg="#666666", font=("Consolas", 8))
         self.status_label.pack(pady=2)
 
+        self.update_wav_profile_ui()
+
     # --- LOGIC METHODS ---
 
     def update_slider_label(self, value):
         self.echo_label.config(text=f"DELAY: {int(float(value))}ms")
+
+    def get_wav_profile(self):
+        return WAV_PROFILE_LOOP if "Thrust/Turbo" in self.wav_profile_var.get() else WAV_PROFILE_RADIO
+
+    def update_wav_profile_ui(self, event=None):
+        is_loop_profile = self.get_wav_profile() == WAV_PROFILE_LOOP
+        controls = [
+            self.phaser_check,
+            self.echo_check,
+            self.echo_slider,
+            self.beep_dropdown,
+            self.intensity_dropdown,
+        ]
+
+        for control in controls:
+            if is_loop_profile:
+                control.state(["disabled"])
+            else:
+                control.state(["!disabled"])
+
+        if is_loop_profile:
+            self.btn_radio.config(text="EXPORT THRUST/TURBO LOOP WAV")
+        else:
+            self.btn_radio.config(text="INITIATE WAV PROCESSING")
 
     def log(self, text, tag=None):
         self.log_box.config(state="normal")
@@ -273,7 +335,9 @@ class BZRadio(tk.Tk):
 
     def process_logic(self, files, mode):
         total = len(files)
-        out_subdir = "bz98_radio_export" if mode == "wav" else "bz98_music_export"
+        wav_profile = self.get_wav_profile() if mode == "wav" else None
+        out_subdir = "bz98_radio_export" if mode == "wav" and wav_profile == WAV_PROFILE_RADIO else \
+                     "bz98_loop_export" if mode == "wav" else "bz98_music_export"
         out_dir = os.path.join(os.path.dirname(files[0]), out_subdir)
         os.makedirs(out_dir, exist_ok=True)
         
@@ -290,39 +354,50 @@ class BZRadio(tk.Tk):
             out_f = os.path.join(out_dir, os.path.splitext(os.path.basename(f))[0] + out_ext)
             
             cmd = []
+            temp_out_f = out_f
             if mode == "wav":
-                # WAV LOGIC
-                intensity = self.intensity_var.get()
-                choice = self.beep_var.get()
-                beep = COMM_BEEP if "comm" in choice else \
-                       UNIT_BEEP if "unit" in choice else \
-                       self.custom_beep_path if choice == "Custom..." else None
-                
-                # Filter Chain
-                if intensity == 'none':
-                    af_chain = "aresample=22050"
+                temp_handle = tempfile.NamedTemporaryFile(delete=False, suffix=".wav", dir=out_dir)
+                temp_out_f = temp_handle.name
+                temp_handle.close()
+
+                if wav_profile == WAV_PROFILE_LOOP:
+                    cmd = [
+                        FFMPEG_EXE, '-y', '-i', f, '-map', '0:a:0',
+                        '-af', 'aresample=11025'
+                    ] + scrub_args + ['-fflags', '+bitexact', '-flags', '+bitexact', '-c:a', 'pcm_u8', '-ar', '11025', '-ac', '1', temp_out_f]
                 else:
-                    hp, lp, comp = (300, 4000, "compand=.3|.3:1|1:-90/-60|-60/-40|-40/-30|-20/-20:6:0:-90:0.2") if intensity == 'light' else \
-                                   (700, 2500, "compand=.1|.1:1|1:-90/-60|-60/-30|-30/-20|-10/-10:12:0:-90:0.1") if intensity == 'heavy' else \
-                                   (500, 3000, "compand=.2|.2:1|1:-90/-60|-60/-40|-40/-20|-10/-10:8:0:-90:0.15")
-                    af_chain = f"aresample=22050,highpass=f={hp},lowpass=f={lp},volume=2.0,{comp}"
+                    # WAV LOGIC
+                    intensity = self.intensity_var.get()
+                    choice = self.beep_var.get()
+                    beep = COMM_BEEP if "comm" in choice else \
+                           UNIT_BEEP if "unit" in choice else \
+                           self.custom_beep_path if choice == "Custom..." else None
+                    
+                    # Filter Chain
+                    if intensity == 'none':
+                        af_chain = "aresample=22050"
+                    else:
+                        hp, lp, comp = (300, 4000, "compand=.3|.3:1|1:-90/-60|-60/-40|-40/-30|-20/-20:6:0:-90:0.2") if intensity == 'light' else \
+                                       (700, 2500, "compand=.1|.1:1|1:-90/-60|-60/-30|-30/-20|-10/-10:12:0:-90:0.1") if intensity == 'heavy' else \
+                                       (500, 3000, "compand=.2|.2:1|1:-90/-60|-60/-40|-40/-20|-10/-10:8:0:-90:0.15")
+                        af_chain = f"aresample=22050,highpass=f={hp},lowpass=f={lp},volume=2.0,{comp}"
 
-                if self.phaser_var.get():
-                    af_chain += ",aphaser=in_gain=0.8:out_gain=0.9:delay=3.0:decay=0.4:speed=0.2:type=t"
+                    if self.phaser_var.get():
+                        af_chain += ",aphaser=in_gain=0.8:out_gain=0.9:delay=3.0:decay=0.4:speed=0.2:type=t"
 
-                if self.echo_var.get():
-                    delay_ms = int(self.echo_delay_var.get())
-                    af_chain += f",aecho=0.8:0.9:{delay_ms}:0.3"
+                    if self.echo_var.get():
+                        delay_ms = int(self.echo_delay_var.get())
+                        af_chain += f",aecho=0.8:0.9:{delay_ms}:0.3"
 
-                if intensity != 'none':
-                    af_chain += ",tremolo=d=0.05:f=30"
+                    if intensity != 'none':
+                        af_chain += ",tremolo=d=0.05:f=30"
 
-                if beep:
-                    cmd = [FFMPEG_EXE, '-y', '-i', beep, '-i', f, '-i', beep, '-filter_complex', 
-                           f"[0:a]aresample=22050,volume=0.3[b1]; [1:a]{af_chain}[m]; [2:a]aresample=22050,volume=0.3[b2]; [b1][m][b2]concat=n=3:v=0:a=1[out]",
-                           '-map', '[out]'] + scrub_args + ['-c:a', 'pcm_u8', '-ar', '22050', '-ac', '1', out_f]
-                else:
-                    cmd = [FFMPEG_EXE, '-y', '-i', f, '-af', af_chain] + scrub_args + ['-c:a', 'pcm_u8', '-ar', '22050', '-ac', '1', out_f]
+                    if beep:
+                        cmd = [FFMPEG_EXE, '-y', '-i', beep, '-i', f, '-i', beep, '-filter_complex', 
+                               f"[0:a]aresample=22050,volume=0.3[b1]; [1:a]{af_chain}[m]; [2:a]aresample=22050,volume=0.3[b2]; [b1][m][b2]concat=n=3:v=0:a=1[out]",
+                               '-map', '[out]'] + scrub_args + ['-fflags', '+bitexact', '-flags', '+bitexact', '-c:a', 'pcm_u8', '-ar', '22050', '-ac', '1', temp_out_f]
+                    else:
+                        cmd = [FFMPEG_EXE, '-y', '-i', f, '-af', af_chain] + scrub_args + ['-fflags', '+bitexact', '-flags', '+bitexact', '-c:a', 'pcm_u8', '-ar', '22050', '-ac', '1', temp_out_f]
             
             else:
                 # OGG LOGIC
@@ -330,10 +405,22 @@ class BZRadio(tk.Tk):
 
             # Execute
             try:
-                subprocess.run(cmd, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                result = subprocess.run(cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                if result.returncode != 0:
+                    raise RuntimeError(result.stderr.strip() or "ffmpeg exited with a non-zero status")
+
+                if mode == "wav":
+                    rewrite_plain_riff_wav(temp_out_f, out_f)
+
                 self.log(f"Exported: {os.path.basename(out_f)}", "success")
             except Exception as e:
                 self.log(f"Error processing {os.path.basename(f)}: {e}", "error")
+            finally:
+                if mode == "wav" and temp_out_f != out_f and os.path.exists(temp_out_f):
+                    try:
+                        os.remove(temp_out_f)
+                    except OSError:
+                        pass
 
         # Completion
         self.status_label.config(text="OPERATION COMPLETE")

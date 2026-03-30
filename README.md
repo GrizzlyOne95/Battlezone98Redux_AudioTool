@@ -8,7 +8,7 @@
 
 - **Radio VO Mastering:** Automatically applies high-pass/low-pass filtering, compression, and tremolo to simulate authentic analog radio transmissions. Can be disabled.
 - **Intro/Outro Beeps:** Automatically appends "squelch" tones to the start and end of transmissions. Supports `commbeep.wav` (orders), `unitbeep.wav` (responses), or custom user files. Can be disabled.
-- **8-Bit Enforcement:** Forces the specific **Unsigned 8-bit PCM WAV** (22050Hz Mono) format required by the BZ98 engine to prevent in-game audio crackling or playback speed issues.
+- **WAV Profiles:** Supports both **Radio VO** export (`22050Hz` mono `PCM_U8`) and a dedicated **Thrust/Turbo Loop** export path (`11025Hz` mono `PCM_U8`, plain RIFF/WAVE).
 - **Music Soundtrack Path:** Converts audio to high-fidelity **Stereo OGG** (44100Hz) without radio distortion, perfect for background music.
 - **Metadata:** Can strip and remove all meta data and non-audio streams.
 - **Lua Timing Manifest:** Exports a CSV of file durations—essential for scripters to perfectly time subtitles and mission events in Lua.
@@ -26,6 +26,7 @@
 | Target Type | Format | Sample Rate | Channels | Effects Applied |
 | :--- | :--- | :--- | :--- | :--- |
 | **Radio/Unit VO** | WAV (PCM_U8) | 22050 Hz | Mono | Bandpass, Tremolo, Beeps |
+| **Thrust/Turbo Loops** | WAV (PCM_U8) | 11025 Hz | Mono | None, plain RIFF/WAVE rewrite |
 | **Soundtrack** | OGG (Vorbis) | 44100 Hz | Stereo | None (Clean / Full Range) |
 
 ---
