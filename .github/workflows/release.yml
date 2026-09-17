@@ -67,7 +67,7 @@ jobs:
         pip install pillow
 
     - name: Build with PyInstaller
-      run: pyinstaller audio.py --onefile --windowed --icon "branding/app_icon.png" --add-data "branding/app_icon.png:." --add-data "BZONE.ttf:." --add-data "commbeep.wav:." --add-data "unitbeep.wav:." --add-data "LICENSE:." --runtime-hook branding/pyinstaller_icon_hook.py
+      run: pyinstaller audio.py --onefile --windowed --icon "branding/app_icon.png" --add-data "branding/app_icon.png:branding" --add-data "BZONE.ttf:." --add-data "commbeep.wav:." --add-data "unitbeep.wav:." --add-data "LICENSE:." --runtime-hook branding/pyinstaller_icon_hook.py
 
     - name: Package Application (Windows)
       if: matrix.os == 'windows-latest'
