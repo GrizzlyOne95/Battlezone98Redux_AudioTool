@@ -19,25 +19,42 @@ jobs:
         os: [windows-latest, ubuntu-latest, macos-latest]
         include:
           - os: windows-latest
+            platform: win
             asset_name: Battlezone98Redux_AudioTool-win
-            pyinstaller_output: dist/audio.exe
-            final_asset: Battlezone98Redux_AudioTool-win.zip
+            pyinstaller_output: dist/BZAudioTool.exe
           - os: ubuntu-latest
+            platform: linux
             asset_name: Battlezone98Redux_AudioTool-linux
-            pyinstaller_output: dist/audio
-            final_asset: Battlezone98Redux_AudioTool-linux.tar.gz
+            pyinstaller_output: dist/BZAudioTool
           - os: macos-latest
+            platform: mac
             asset_name: Battlezone98Redux_AudioTool-mac
-            pyinstaller_output: dist/audio.app
-            final_asset: Battlezone98Redux_AudioTool-mac.zip
+            pyinstaller_output: dist/BZAudioTool.app
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.x'
+
+    - name: Resolve package version
+      id: version
+      shell: bash
+      run: |
+        if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+          version="${GITHUB_REF_NAME#v}"
+        else
+          tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          version="${tag#v}"
+          if [[ -z "$version" ]]; then
+            version="0.0.0"
+          fi
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
 
     - name: Install FFMPEG (Windows)
       if: matrix.os == 'windows-latest'
@@ -70,30 +87,40 @@ jobs:
       run: |
         python scripts/generate_app_icon.py branding/repo_icon.svg branding/app_icon.ico --png branding/app_icon.png
 
-    - name: Build with PyInstaller
-      run: pyinstaller audio.py --onefile --windowed --icon "branding/app_icon.ico" --add-data "branding/app_icon.ico:branding" --add-data "branding/app_icon.png:branding" --add-data "BZONE.ttf:." --add-data "commbeep.wav:." --add-data "unitbeep.wav:." --add-data "LICENSE:." --runtime-hook branding/pyinstaller_icon_hook.py
+    - name: Generate Windows version metadata
+      if: matrix.os == 'windows-latest'
+      run: |
+        python scripts/generate_version_info.py --version "${{ steps.version.outputs.version }}" --output branding/version_info.txt
+
+    - name: Build with PyInstaller (Windows)
+      if: matrix.os == 'windows-latest'
+      run: pyinstaller audio.py --name BZAudioTool --onefile --windowed --icon "branding/app_icon.ico" --version-file "branding/version_info.txt" --add-data "branding/app_icon.ico:branding" --add-data "branding/app_icon.png:branding" --add-data "BZONE.ttf:." --add-data "commbeep.wav:." --add-data "unitbeep.wav:." --add-data "LICENSE:." --runtime-hook branding/pyinstaller_icon_hook.py
+
+    - name: Build with PyInstaller (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: pyinstaller audio.py --name BZAudioTool --onefile --windowed --icon "branding/app_icon.ico" --add-data "branding/app_icon.ico:branding" --add-data "branding/app_icon.png:branding" --add-data "BZONE.ttf:." --add-data "commbeep.wav:." --add-data "unitbeep.wav:." --add-data "LICENSE:." --runtime-hook branding/pyinstaller_icon_hook.py
 
     - name: Package Application (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        Compress-Archive -Path ${{ matrix.pyinstaller_output }} -DestinationPath ${{ matrix.final_asset }}
+        Compress-Archive -Path ${{ matrix.pyinstaller_output }} -DestinationPath "Battlezone98Redux_AudioTool-v${{ steps.version.outputs.version }}-win.zip"
       shell: powershell
 
     - name: Package Application (Linux)
       if: matrix.os == 'ubuntu-latest'
       run: |
-        tar -czvf ${{ matrix.final_asset }} -C dist audio
+        tar -czvf "Battlezone98Redux_AudioTool-v${{ steps.version.outputs.version }}-linux.tar.gz" -C dist BZAudioTool
 
     - name: Package Application (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        zip -r ${{ matrix.final_asset }} ${{ matrix.pyinstaller_output }}
+        zip -r "Battlezone98Redux_AudioTool-v${{ steps.version.outputs.version }}-mac.zip" ${{ matrix.pyinstaller_output }}
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.asset_name }}
-        path: ${{ matrix.final_asset }}
+        path: Battlezone98Redux_AudioTool-v*-${{ matrix.platform }}.*
 
   release:
     needs: build

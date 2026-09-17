@@ -1,8 +1,6 @@
-# BZRadio: Battlezone 98 Redux Audio Tool
+# Battlezone Audio Tool
 
-**BZRadio** is a specialized utility designed for the **Battlezone 98 Redux** modding community. It streamlines the process of mastering audio for the legacy engine, handling the strict formatting requirements for both unit voiceovers (VO) and mission soundtracks.
-
-
+**Battlezone Audio Tool** (formerly **BZRadio**) is a specialized utility designed for the **Battlezone 98 Redux** modding community. It streamlines the process of mastering audio for the legacy engine, handling the strict formatting requirements for both unit voiceovers (VO) and mission soundtracks.
 
 ## Features
 
@@ -15,9 +13,6 @@
 - **Batch & Single Mode:** Process an entire folder of source files or a single specific track with one click.
 
 <img width="802" height="982" alt="image" src="https://github.com/user-attachments/assets/c1df73d5-a945-446c-8e8e-59c8cd4728f0" />
-
-
-
 
 ---
 
@@ -34,32 +29,47 @@
 ## Installation & Usage
 
 ### For Users (Standalone EXE)
-1. Download the latest `BZRadio.exe` from the [Releases](../../releases) tab.
-2. Launch the tool. 
-3. **WAV Path:** Use for unit voices and radio chatter (Includes beeps and radio filters).
-4. **OGG Path:** Use for mission music (Full quality, no filters).
+1. Download the latest Windows release archive from the [Releases](../../releases) tab.
+2. Extract and launch `BZAudioTool.exe`.
+3. **WAV Path:** Use for unit voices and radio chatter (includes beeps and radio filters).
+4. **OGG Path:** Use for mission music (full quality, no filters).
+
+The executable name is intentionally stable across releases. Release archives carry the version number, while Windows file metadata reports the application and product version.
+
+### Windows application metadata
+
+Release builds use the shared Battlezone modding-tool suite convention:
+
+```text
+FileDescription: Battlezone Audio Tool
+ProductName: Battlezone Modding Tools
+CompanyName: GrizzlyOne95
+OriginalFilename: BZAudioTool.exe
+```
 
 ### For Developers (Running from Source)
 If you wish to run the script or build it yourself:
+
 1. **Requirements:** Install dependencies:
+   ```bash
    pip install -r requirements.txt
-2. FFmpeg: Place a copy of ffmpeg.exe in the root directory.
-3. Run: python audio.py
-4. To generate the single-file executable with the custom icon and bundled assets, use the following command:
-```Bash
-python -m PyInstaller --noconsole --onefile \
---collect-all customtkinter \
---collect-all soundfile \
---icon="bzradio.ico" \
---add-data "bzradio.ico;." \
---add-data "commbeep.wav;." \
---add-data "unitbeep.wav;." \
---add-binary "ffmpeg.exe;." \
-audio.py
-```
+   ```
+2. Install FFmpeg or place `ffmpeg.exe` where the tool can access it.
+3. Run:
+   ```bash
+   python audio.py
+   ```
+4. To generate the Windows executable using the same naming and metadata convention as release builds:
+   ```powershell
+   python scripts/generate_app_icon.py branding/repo_icon.svg branding/app_icon.ico --png branding/app_icon.png
+   python scripts/generate_version_info.py --version "1.2.3" --output branding/version_info.txt
+   pyinstaller audio.py --name BZAudioTool --onefile --windowed --icon "branding/app_icon.ico" --version-file "branding/version_info.txt" --add-data "branding/app_icon.ico:branding" --add-data "branding/app_icon.png:branding" --add-data "BZONE.ttf:." --add-data "commbeep.wav:." --add-data "unitbeep.wav:." --add-data "LICENSE:." --runtime-hook branding/pyinstaller_icon_hook.py
+   ```
+
 ## Credits & Licensing
+
 Code: Licensed under the MIT License.
 
-FFmpeg: This tool bundles FFmpeg binaries licensed under the LGPLv2.1.
+FFmpeg: FFmpeg is licensed under the LGPLv2.1 where applicable to the distributed build.
 
-Battlezone 98 Redux Assets: Default beep files (commbeep.wav, unitbeep.wav) are the property of Rebellion / Activision and are included for non-commercial fan-use specifically for the BZ98 modding community.
+Battlezone 98 Redux Assets: Default beep files (`commbeep.wav`, `unitbeep.wav`) are the property of Rebellion / Activision and are included for non-commercial fan-use specifically for the BZ98 modding community.
