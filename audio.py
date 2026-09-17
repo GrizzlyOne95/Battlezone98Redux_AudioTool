@@ -120,7 +120,7 @@ class BZRadio(tk.Tk):
         super().__init__()
         
         # --- WINDOW CONFIGURATION ---
-        self.title("BZRadio - Battlezone 98 Redux Audio Tool")
+        self.title("Battlezone Audio Tool")
         self.geometry("800x950")
         self.custom_beep_path = None
         
@@ -192,7 +192,7 @@ class BZRadio(tk.Tk):
         # --- HEADER SECTION ---
         header_frame = ttk.Frame(self)
         header_frame.pack(pady=(20, 5))
-        ttk.Label(header_frame, text="BZRadio", style="Header.TLabel").pack()
+        ttk.Label(header_frame, text="Battlezone Audio Tool", style="Header.TLabel").pack()
         ttk.Label(header_frame, text="AUDIO ARCHITECT FOR BZ98 REDUX", style="Sub.TLabel").pack()
 
         # --- MAIN CONTAINER ---
