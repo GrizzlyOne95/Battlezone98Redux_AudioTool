@@ -12,12 +12,54 @@ import ctypes
 from datetime import datetime
 
 # --- UTILITY FUNCTIONS ---
+APP_USER_MODEL_ID = "GrizzlyOne95.Battlezone98Redux.AudioTool"
+
+
+def _set_app_user_model_id():
+    if sys.platform != "win32":
+        return
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+    except Exception:
+        pass
+
+
 def get_resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     if getattr(sys, 'frozen', False):
         # PyInstaller creates a temp folder and stores path in _MEIPASS
         return os.path.join(sys._MEIPASS, relative_path)
+    here = os.path.dirname(os.path.abspath(__file__))
+    bundled = os.path.join(here, relative_path)
+    if os.path.exists(bundled):
+        return bundled
     return os.path.join(os.path.abspath("."), relative_path)
+
+
+def apply_window_icon(window):
+    """Apply the canonical app icon to a Tk/Toplevel window."""
+    try:
+        ico_path = get_resource_path(os.path.join("branding", "app_icon.ico"))
+        if not os.path.exists(ico_path):
+            ico_path = get_resource_path("branding/app_icon.ico")
+        if os.path.exists(ico_path):
+            try:
+                window.iconbitmap(ico_path)
+            except Exception:
+                pass
+        png_path = get_resource_path(os.path.join("branding", "app_icon.png"))
+        if os.path.exists(png_path):
+            try:
+                image = tk.PhotoImage(file=png_path)
+                window.iconphoto(True, image)
+                window._battlezone_app_icon = image
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+_set_app_user_model_id()
 
 # Resource Constants
 FFMPEG_EXE = get_resource_path("ffmpeg.exe")
@@ -93,12 +135,11 @@ class BZRadio(tk.Tk):
         self.font_name = "Consolas"
         self.load_custom_fonts()
 
-        # Set the window icon
+        # Set the window icon (canonical branding/app_icon).
         try:
-            self.iconpath = get_resource_path("bzradio.ico")
-            self.iconbitmap(self.iconpath)
-        except:
-            pass 
+            apply_window_icon(self)
+        except Exception:
+            pass
 
         self.setup_styles()
         self.setup_ui()
