@@ -62,7 +62,7 @@ If you wish to run the script or build it yourself:
 4. To generate the Windows executable using the same naming and metadata convention as release builds:
    ```powershell
    python scripts/generate_app_icon.py branding/repo_icon.svg branding/app_icon.ico --png branding/app_icon.png
-   python scripts/generate_version_info.py --version "1.2.3" --output branding/version_info.txt
+   python scripts/generate_version_info.py --version (Get-Content VERSION).Trim() --output branding/version_info.txt
    pyinstaller audio.py --name BZAudioTool --onefile --windowed --icon "branding/app_icon.ico" --version-file "branding/version_info.txt" --add-data "branding/app_icon.ico:branding" --add-data "branding/app_icon.png:branding" --add-data "BZONE.ttf:." --add-data "commbeep.wav:." --add-data "unitbeep.wav:." --add-data "LICENSE:." --runtime-hook branding/pyinstaller_icon_hook.py
    ```
 
